@@ -7,7 +7,6 @@ services:
       context: ./nistagram-frontend
     volumes:
       - ./nistagram-frontend/src:/app/src
-
     environment: 
       - CHOKIDAR_USEPOLLING=true
     ports:
@@ -16,7 +15,17 @@ services:
       - 3000
     stdin_open: true
 
-  
+
+  rabbitmq:
+    image: rabbitmq:3.8-management-alpine
+    container_name: 'rabbitmq'
+    ports:
+        - 5672:5672
+        - 15672:15672
+    volumes:
+        - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+        - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+
   saga:
     container_name: saga
     build:
@@ -30,6 +39,12 @@ services:
     command: /bin/bash -l -c "npm run start:dev"
     env_file:
       - ./nistagram-saga/.env
+    depends_on:
+      - rabbitmq
+      - auth
+      - users
+      - publications
+      - activities
 
   auth:
     container_name: auth
@@ -44,34 +59,16 @@ services:
     command: /bin/bash -l -c "npm run start:dev"
     env_file:
       - ./nistagram-auth/.env
+    depends_on:
+      - rabbitmq
+      - authdb
 
-  publications:
-    container_name: publications
-    build:
-      context: ./nistagram-publications
-      target: development
-    volumes:
-      - ./nistagram-publications:/usr/src/app
-      - /usr/src/app/node_modules
+  authdb:
+    image : mongo:latest
+    container_name: authdb
     ports:
-      - 3003:3000
-    command: /bin/bash -l -c "npm run start:dev"
-    env_file:
-      - ./nistagram-publications/.env
-
-  activities:
-    container_name: activities
-    build:
-      context: ./nistagram-activities
-      target: development
-    volumes:
-      - ./nistagram-activities:/usr/src/app
-      - /usr/src/app/node_modules
-    ports:
-      - 3004:3000
-    command: /bin/bash -l -c "npm run start:dev"
-    env_file:
-      - ./nistagram-activities/.env
+      - 4002:27017
+    restart: always
 
   users:
     container_name: users
@@ -82,10 +79,68 @@ services:
       - ./nistagram-users:/usr/src/app
       - /usr/src/app/node_modules
     ports:
-      - 3005:3000
+      - 3003:3000
     command: /bin/bash -l -c "npm run start:dev"
     env_file:
       - ./nistagram-users/.env
+    depends_on:
+      - rabbitmq
+      - userdb
+
+  userdb:
+    image : mongo:latest
+    container_name: userdb
+    ports:
+      - 4003:27017
+    restart: always
+
+  publications:
+    container_name: publications
+    build:
+      context: ./nistagram-publications
+      target: development
+    volumes:
+      - ./nistagram-publications:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - 3004:3000
+    command: /bin/bash -l -c "npm run start:dev"
+    env_file:
+      - ./nistagram-publications/.env
+    depends_on:
+      - rabbitmq
+      - publicationdb
+
+  publicationdb:
+    image : mongo:latest
+    container_name: publicationdb
+    ports:
+      - 4004:27017
+    restart: always
+
+  activities:
+    container_name: activities
+    build:
+      context: ./nistagram-activities
+      target: development
+    volumes:
+      - ./nistagram-activities:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - 3005:3000
+    command: /bin/bash -l -c "npm run start:dev"
+    env_file:
+      - ./nistagram-activities/.env
+    depends_on:
+      - rabbitmq
+      - activitydb
+
+  activitydb:
+    image : mongo:latest
+    container_name: activitydb
+    ports:
+      - 4005:27017
+    restart: always
 
   nginx:
     container_name: nginx
@@ -97,7 +152,41 @@ services:
     depends_on:
       - frontend
       - saga
-      - auth
-      - publications
-      - activities
-      - users
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - '9090:9090'
+    restart: always
+    volumes:
+      - './config/prometheus.yml:/etc/prometheus/prometheus.yml'
+
+  alertmanager:
+    image: prom/alertmanager:v0.21.0
+    container_name: alert-manager
+    restart: on-failure
+    ports:
+      - 9093:9093
+    volumes:
+      - ./config/alertmanager:/etc/alertmanager
+  
+  node-exporter:
+    image: prom/node-exporter:v1.1.2
+    container_name: node-exporter
+    ports:
+      - 9100:9100
+  
+  grafana:
+    image: grafana/grafana:7.5.2
+    container_name: grafana
+    restart: on-failure
+    ports:
+      - 3100:3000
+    depends_on:
+      - prometheus
+
+networks:
+  default:
+    name: nistagram
+    driver: bridge

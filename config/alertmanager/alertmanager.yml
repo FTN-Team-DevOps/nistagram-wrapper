@@ -1,0 +1,12 @@
+route:
+  receiver: admin
+
+receivers:
+  - name: admin
+    email_configs:
+      - to: test@gmail.com
+        from: test@gmail.com
+        smarthost: smft.gmail.com:587
+        auth_username: test@gmail.com
+        auth_identity: test@gmail.com
+        auth_password: myPassword

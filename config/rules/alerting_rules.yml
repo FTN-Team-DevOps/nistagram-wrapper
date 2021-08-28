@@ -1,0 +1,28 @@
+groups:
+  - name: node_rules
+    rules:
+      - alert: NodeFilesystemUsageHigh
+        expr: node_filesystem_free{job='node',filesystem!~"^/run(/|$)"} / node_filesystem_size{job='node'} < 0.2
+        for: 1m
+        labels:
+          severity: medium
+        annotations:
+          summary: Node filesystem usage is high
+          description: Node {{ $labels.instance }}'s filesystem {{ $labels.filesystem }} has less than 20% disk space remaining.
+  - name: instance_rules
+    rules:
+      - alert: AverageInstanceCPUOver80
+        expr: avg without(job)(rate(process_cpu_seconds_total[5m])) > 0.8
+        for: 1m
+        labels:
+          severity: medium
+      - alert: AverageInstanceCPUOver90
+        expr: avg without(job)(rate(process_cpu_seconds_total[5m])) > 0.9
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Average
+          description: <
+            Average CPU usage is {{ $labels.severity }} of job {{ $labels.job }} is {{ $value }}
+            for more than 5 minutes.
